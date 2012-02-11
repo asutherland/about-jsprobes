@@ -198,7 +198,84 @@ function activateGCProbes() {
     });
 }
 
-activateGCProbes();
+/**
+ * Try and provide a 'top' for JS compartments.  Because compartments are tied
+ *  to threads we don't need to try and parameterize on threads as long as we
+ *  parameterize on compartments.
+ */
+function jstopProbes() {
+  execOnProbeThread(function() {
+    var compartmentInfos = [],
+        id, cinfo, startTime, endTime, idx, toSend;
+  });
+
+  // XXX milliseconds is a crappy granularity
+  registerProbe(
+    probes.JS_WILL_EXECUTE_SCRIPT,
+    ["env.currentTimeUS", "context.compartment.id"],
+    function() {
+      id = context.compartment.id;
+      startTime = env.currentTimeUS;
+      //print("> " + id + " " + startTime);
+      idx = compartmentInfos.indexOf(id);
+      if (idx === -1) {
+        cid = {
+          id: id,
+          depth: 1,
+          enterStamp: startTime,
+          tally: 0,
+        };
+        compartmentInfos.push(id);
+        compartmentInfos.push(cid);
+      }
+      else {
+        cid = compartmentInfos[idx + 1];
+        if (++cid.depth === 1)
+          cid.enterStamp = startTime;
+      }
+    });
+  registerProbe(
+    probes.JS_DID_EXECUTE_SCRIPT,
+    ["env.currentTimeUS", "context.compartment.id"],
+    function() {
+      id = context.compartment.id;
+      endTime = env.currentTimeUS;
+      //print("< " + id + " " + endTime);
+      idx = compartmentInfos.indexOf(id);
+      cid = compartmentInfos[idx + 1];
+      if (--cid.depth === 0) {
+        cid.tally += endTime - cid.enterStamp;
+      }
+    });
+
+  gatherDataFromProbeThreadPeriodically(
+    1000,
+    function onProbeThread() {
+      toSend = [];
+      for (idx = compartmentInfos.length - 1; idx >= 0; idx -= 2) {
+        cid = compartmentInfos[idx];
+        if (cid.tally) {
+          toSend.push(cid.id);
+          toSend.push(cid.tally);
+        }
+        // reap inactive things
+        if (!cid.tally && !cid.depth) {
+          compartmentInfos.splice(idx - 1, 2);
+        }
+        // zero tallies for active things
+        else {
+          cid.tally = 0;
+        }
+      }
+      postMessage(toSend);
+    },
+    function onOurThread(e) {
+      prettyPrint(e.value);
+    });
+}
+
+//activateGCProbes();
+jstopProbes();
 
 } catch (ex) {
   console.error("some kind of error happened:\n",ex,"\n\n",ex.stack);
