@@ -31,6 +31,8 @@ var urlListener = {
 
 window.console.log("added listener");
 
+try {
+
 window.addEventListener('unload', function() {
     gBrowser.removeProgressListener(urlListener);
     stopProbes();
@@ -69,11 +71,13 @@ function stopProbes() {
     probes = null;
 }
 
+function NOP() {};
 function execOnProbeThread(func, callback) {
   var execStr = func.toString();
   execStr = execStr.substring(execStr.indexOf("{") + 1,
                               execStr.lastIndexOf("}"));
-  probes.asyncQuery(execStr, callback);
+  //console.log("asyncQuery", execStr);
+  probes.asyncQuery(execStr, callback || NOP);
 }
 
 function registerProbe(probepoint, captureArgs, func) {
@@ -81,6 +85,7 @@ function registerProbe(probepoint, captureArgs, func) {
   var execStr = func.toString();
   execStr = execStr.substring(execStr.indexOf("{") + 1,
                               execStr.lastIndexOf("}"));
+  console.log("addHandler", usingStr, execStr);
   var cookie = probes.addHandler(probepoint, usingStr, execStr);
   activeHandlers.push(cookie);
 }
@@ -97,10 +102,12 @@ function gatherDataFromProbeThreadPeriodically(intervalMS,
   timer.init(timerCb, intervalMS, TYPE_REPEATING_SLACK);
 }
 
-var outputDomNode = document.getElementById("oot");
+var outputDomNode;
 function prettyPrint(obj) {
-  var s = JSON.stringify(obj, 0, 2),
+  var s = JSON.stringify(obj, null, 2),
       tn = document.createTextNode(s);
+  if (!outputDomNode)
+    outputDomNode = document.getElementById("oot");
   outputDomNode.appendChild(tn);
 }
 
@@ -182,8 +189,17 @@ function activateGCProbes() {
       pendingData = [];
     },
     function onOurThread(e) {
-      prettyPrint(e.value);
+      try {
+        prettyPrint(e.value);
+      }
+      catch(ex) {
+        console.error("problem pretty printing\n", ex, "\n\n", ex.stack);
+      }
     });
 }
 
 activateGCProbes();
+
+} catch (ex) {
+  console.error("some kind of error happened:\n",ex,"\n\n",ex.stack);
+}
