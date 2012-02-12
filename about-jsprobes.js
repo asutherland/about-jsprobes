@@ -215,7 +215,7 @@ function activateGCProbes() {
 function jstopProbes() {
   execOnProbeThread(function() {
     var compartmentInfos = [], threadStacks = [], curThreadStack, tslen,
-        id, threadId, cinfo, timestamp, idx, toSend;
+        id, threadId, cid, timestamp, idx, toSend;
   });
 
   // it's important to register the exit probe before the enter probe so
@@ -229,8 +229,8 @@ function jstopProbes() {
       threadId = env.threadId;
       // find the thread stack; it must exist unless this is the startup case
       idx = threadStacks.indexOf(threadId);
-      if (idx !== -1) {
-        curThreadStack = threadStacks[idx + 1];
+      curThreadStack = threadStacks[idx + 1];
+      if (curThreadStack && curThreadStack.length) {
         // our compartment must be on top, and its enterStamp valid
         cid = curThreadStack.pop();
         cid.tally += timestamp - cid.enterStamp;
